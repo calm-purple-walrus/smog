@@ -161,12 +161,41 @@ def test_a_gate_the_policy_allows_not_to_run_is_named_and_does_not_fail(reposito
     assert "  check.tests_pass: needs --full" in text
 
 
-def test_no_gate_judges_a_run_without_the_data_of_a_selected_measurement(repository):
+def test_missing_measurements_do_not_disable_independent_conditions(repository):
     policy = Policy()
     policy.metric_floor("codebase.mutation_score", block_below=0.99)
     policy.score_floor("function", block_below=0.99)
     report = analyze(policy, str(repository))
-    assert list(report.missing) == ["codebase.mutation_score"] and not report.findings and report.exit_code == 2
+    assert list(report.missing) == ["codebase.mutation_score"] and report.exit_code == 2
+    assert {finding.condition for finding in report.blocks} == {"floor codebase.mutation_score", "floor function score"}
+    assert all("did not run:" in finding.message for finding in report.blocks)
+
+
+@pytest.mark.parametrize("missing", ["mutation", "review"])
+def test_source_rules_and_available_metrics_run_without_scores(repository, missing):
+    policy = Policy()
+    if missing == "review":
+        policy.deselect("codebase.mutation_score")
+        policy.humans("reviewer")
+    policy.any_function("function.nesting", above=2)
+
+    @policy.blocking
+    def source_rule(run):
+        for file in run.codebase.files:
+            yield file.path, "source violation"
+
+    @policy.blocking
+    def custom_score(run):
+        return run.score() < 1
+
+    report = analyze(policy, str(repository))
+    conditions = {finding.condition: finding for finding in report.blocks}
+    assert report.missing and report.exit_code == 2
+    assert conditions["source_rule"].message == "source violation"
+    assert conditions["any function: function.nesting"].piece_id == "sample::deep"
+    assert "did not run: score unavailable" in conditions["custom_score"].message
+    assert "source violation" in render(report, "crate")
+    assert "No score:" in render(report, "crate")
 
 
 def test_a_gate_with_nothing_to_judge_passes(tmp_path):

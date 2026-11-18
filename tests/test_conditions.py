@@ -516,7 +516,7 @@ def test_history_lenses_on_a_known_history(tmp_path):
 def test_comparison_does_not_report_a_drop_caused_only_by_history(tmp_path):
     root = _history_repository(tmp_path)
     git(root, "checkout", "-q", "-b", "work")
-    policy = Policy()
+    policy = scored_policy()
     policy.function_drop("HEAD", warn_by=0.0001)
     policy.select("function.code_churn", target=0, limit=1, group="history")
     assert not [f for f in analyze(policy, str(root)).findings if "drop" in f.condition]

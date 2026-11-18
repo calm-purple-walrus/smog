@@ -454,7 +454,7 @@ Churn, `function.cyclomatic` and `type.methods` are measured and reported, and a
 
 A selected measurement without a value because there is nothing to measure, such as `type.fields` in a codebase without a type or a review measurement without `policy.humans`, charges nothing; `--comprehensive` names each one under `No value in this run`, with the reason.
 
-A selected measurement without a value because its data is missing, such as `codebase.mutation_score` without a whole-tree mutation run or a review measurement without review data, makes any score wrong. The run then prints `No score: data for these measurements in the score is missing.` with each such measurement and the reason, judges no gate, and exits with 2 (result `no score`). `--metric` still prints the values. To score runs without that data, deselect the measurement.
+A selected measurement without a value because its data is missing, such as `codebase.mutation_score` without a whole-tree mutation run or a review measurement without review data, makes any score wrong. The run then prints `No score: data for these measurements in the score is missing.` with each such measurement and the reason, and exits with 2 (result `no score`). Conditions that inspect source, completed checks or available individual metrics still run and report findings. Overall score conditions cannot run and report that explicitly. `--metric` still prints the values. To score runs without that data, deselect the measurement.
 
 ## Limits
 

@@ -321,9 +321,9 @@ class Analyzer:
         checks = {check_id: result for check_id, result in checks.items() if check_id not in policy.disabled}
         diff_values = {metric_id: value for metric_id, value in diff_values.items() if metric_id not in policy.disabled}
         unvalued, missing = selected_without_value(card, tool_results, bool(policy.human_logins))
-        run = Run(card, comparison, history, checks, slop, tool_results, unvalued)
-        # Without the data of a selected measurement every score is wrong, so no condition compares one.
-        findings = [] if missing else [finding for condition in policy.conditions for finding in condition.evaluate(run)]
+        run = Run(card, comparison, history, checks, slop, tool_results, unvalued, missing)
+        # Missing scores must not disable conditions that inspect source or completed checks.
+        findings = [finding for condition in policy.conditions for finding in condition.evaluate(run)]
         return Report(card, findings, checks, slop, comparison, history, tool_results, diff_values, unvalued, missing, restriction, policy_change)
 
     def _compare(self, policy, head, base_sha, history, rust_counts, doc_slop, whole, tool_results, full, shallow) -> Comparison:

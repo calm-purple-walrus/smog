@@ -29,7 +29,7 @@ def render(report: Report, level: str, comprehensive: bool = False, failures: st
     if failures is not None:
         return "\n".join(_failures(report, failures))
     if report.missing:
-        return "\n".join(_no_score(report))
+        return "\n".join(_no_score(report) + (["", *_findings(report)] if report.findings else [])).rstrip()
     if files_by_crate:
         return "\n".join(_files_by_crate(report))
     return "\n".join(_comprehensive(report, level) if comprehensive else _condensed(report, level))

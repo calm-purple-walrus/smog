@@ -84,12 +84,17 @@ class Finding:
         return self._piece_id
 
 
+class _MissingScore(Exception):
+    """A condition requested a score whose selected measurements are incomplete."""
+
+
 class Run:
     """What a condition can see: the scored code, the comparison with the ref, history, checks and tool results."""
 
-    def __init__(self, card: Scorecard, comparison=None, history=None, checks=None, slop=None, tools=None, unvalued=None):
+    def __init__(self, card: Scorecard, comparison=None, history=None, checks=None, slop=None, tools=None, unvalued=None, missing=None):
         self._card = card
         self._unvalued = unvalued or {}
+        self._missing = missing or {}
         self._comparison = comparison
         self._history = history
         self._checks = checks or {}
@@ -168,7 +173,12 @@ class Run:
         """Production functions."""
         return self._card.pieces(PieceKind.FUNCTION)
 
+    def _require_score(self) -> None:
+        if self._missing:
+            raise _MissingScore("score unavailable: " + "; ".join(f"{name}: {reason}" for name, reason in self._missing.items()))
+
     def score(self, piece=None) -> float:
+        self._require_score()
         return self._card.score(piece)
 
     def metric_score(self, metric_id: str, piece=None) -> float | None:
@@ -205,6 +215,14 @@ class Condition:
         A `NotRun` it yields becomes a finding that says so. It blocks when the condition is blocking, unless the
         condition was declared with `allow_not_run`. Raises TypeError for a function that returns one string.
         """
+        try:
+            return self._evaluate(run)
+        except _MissingScore as error:
+            fails = self._severity is Severity.BLOCK and not self._allow_not_run
+            severity = Severity.BLOCK if fails else Severity.NOT_RUN
+            return [Finding(severity, self._name, f"did not run: {error}")]
+
+    def _evaluate(self, run: Run) -> list[Finding]:
         results = self._function(run)
         if isinstance(results, bool):
             results = ("the condition holds",) if results else ()
@@ -701,6 +719,7 @@ class Policy:
         def warnings(run: Run):
             if run.comparison is None:  # a run without --changes compares nothing
                 return
+            run._require_score()
             if left_out(run):
                 return
             for piece, before, after in run.comparison.score_drops():
@@ -710,6 +729,7 @@ class Policy:
         def blocks(run: Run):
             if run.comparison is None:  # a run without --changes compares nothing
                 return
+            run._require_score()
             if skipped := left_out(run):
                 yield skipped
                 return
@@ -720,6 +740,7 @@ class Policy:
         def new(run: Run):
             if run.comparison is None:  # a run without --changes compares nothing
                 return
+            run._require_score()
             if skipped := left_out(run):
                 yield skipped
                 return
@@ -741,6 +762,7 @@ class Policy:
         def blocks(run: Run):
             if run.comparison is None:  # a run without --changes compares nothing
                 return
+            run._require_score()
             for piece, before, after in run.comparison.file_scores():
                 if before is None and after < new_below:
                     yield piece, f"new against {ref} with score {after:.3f}, below {new_below}"
@@ -756,6 +778,7 @@ class Policy:
         def blocks(run: Run):
             if run.comparison is None:  # a run without --changes compares nothing
                 return
+            run._require_score()
             before, after = run.comparison.base.score(), run.comparison.head.score()
             if before - after > block_above:
                 yield f"score fell from {before:.3f} to {after:.3f} against {ref}, by more than {block_above:g}"
