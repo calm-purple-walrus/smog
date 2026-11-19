@@ -88,9 +88,14 @@ class GitRepository:
             ref = f"origin/{ref}"
         return self._git("merge-base", ref, "HEAD").decode().strip()
 
-    def diff_against(self, sha: str) -> list[FileChange]:
-        """Committed and uncommitted changes, with untracked files counted as added."""
-        changes = _parse_diff(self._git("diff", *_DIFF_OPTIONS, sha))
+    def diff_against(self, sha: str, *, detect_renames: bool = False) -> list[FileChange]:
+        """Committed and uncommitted changes, with untracked files counted as added.
+
+        Only suppression checks request rename detection. Other diff consumers keep deleted and added paths.
+        The explicit threshold and unlimited search make rename detection independent of git configuration.
+        """
+        options = (*_DIFF_OPTIONS, "--find-renames=50%", "-l0") if detect_renames else _DIFF_OPTIONS
+        changes = _parse_diff(self._git("diff", *options, sha))
         for path in self._git("ls-files", "--others", "--exclude-standard", "-z").decode().split("\0"):
             if path and (Path(self._root) / path).is_file():
                 text = (Path(self._root) / path).read_text(errors="replace")
@@ -216,6 +221,7 @@ class GitRepository:
 def _parse_diff(output: bytes) -> list[FileChange]:
     changes = []
     path = None
+    previous_path = None
     status = "M"
     added: list[tuple[int, str]] = []
     removed: list[tuple[int, str]] = []
@@ -223,16 +229,21 @@ def _parse_diff(output: bytes) -> list[FileChange]:
 
     def flush():
         if path is not None:
-            changes.append(FileChange(path, added, removed, status))
+            changes.append(FileChange(path, added, removed, status, previous_path=previous_path))
 
     for raw in output.decode("utf-8", "replace").split("\n"):
         if raw.startswith("diff --git "):
             flush()
             path, status, added, removed = _path_from_header(raw), "M", [], []
+            previous_path = None
         elif raw.startswith("new file mode"):
             status = "A"
         elif raw.startswith("deleted file mode"):
             status = "D"
+        elif raw.startswith("rename from "):
+            previous_path = raw.removeprefix("rename from ")
+        elif raw.startswith("rename to "):
+            path = raw.removeprefix("rename to ")
         elif raw.startswith("@@ "):
             match = _HUNK.match(raw)
             old_line, new_line = int(match.group(1)), int(match.group(2))
@@ -247,7 +258,7 @@ def _parse_diff(output: bytes) -> list[FileChange]:
 
 
 def _path_from_header(line: str) -> str:
-    """`diff --git a/x b/x` with no renames, so both sides are the same path."""
+    """Read a same-path header. A rename's destination is read from its subsequent `rename to` line."""
     body = line.removeprefix("diff --git ")
     middle = (len(body) - 1) // 2
     return body[middle + 3 :] if body[middle] == " " else body.rsplit(" b/", 1)[-1]

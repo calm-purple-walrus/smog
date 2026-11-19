@@ -22,14 +22,18 @@ def _alnum_count(text: str) -> int:
 
 
 class Comparison:
-    def __init__(self, ref: str, base: Scorecard, head: Scorecard, changes: list[FileChange], commit_sizes: list[int], settings: dict = DEFAULT_SETTINGS, with_reviews: bool = False):
-        """`with_reviews`: both sides are scored with review data. Neither side is scored with slow tools."""
+    def __init__(self, ref: str, base: Scorecard, head: Scorecard, changes: list[FileChange], commit_sizes: list[int], settings: dict = DEFAULT_SETTINGS, with_reviews: bool = False, *, suppression_changes: list[FileChange] | None = None):
+        """`with_reviews`: both sides are scored with review data. Neither side is scored with slow tools.
+
+        `suppression_changes` carries a rename-aware diff for that check only; omitted, it uses `changes`.
+        """
         self._settings = settings
         self._with_reviews = with_reviews
         self._ref = ref
         self._base = base
         self._head = head
         self._changes = changes
+        self._suppression_changes = changes if suppression_changes is None else suppression_changes
         self._commit_sizes = commit_sizes
         self._pairs = None
 
@@ -257,14 +261,20 @@ class Comparison:
 
     def suppressions_added(self, exceptions: list[str]) -> list[tuple[str, int, str]]:
         found = []
-        for change in self._changes:
+        raw_changes = {change.path: change for change in self._changes}
+        for change in self._suppression_changes:
+            previous_path = change.previous_path or change.path
             if change.path.endswith(".rs"):
                 patterns = self._settings["new_suppression_patterns"]
+                same_kind = previous_path.endswith(".rs")
             elif change.path.rpartition("/")[2] == "Cargo.toml":
                 patterns = self._settings["manifest_suppression_patterns"]
+                same_kind = previous_path.rpartition("/")[2] == "Cargo.toml"
             else:
                 continue
-            for line, text in change.added:
+            # A rename into a checked file kind activates suppressions that were not checked before.
+            added = change.added if same_kind else raw_changes[change.path].added
+            for line, text in added:
                 if any(re.search(pattern, text) for pattern in patterns) and not any(re.search(pattern, text) for pattern in exceptions):
                     found.append((change.path, line, text.strip()))
         return found

@@ -191,6 +191,24 @@ def test_git_configuration_of_the_user_or_the_repository_does_not_change_what_is
     assert _history_of(root) == plain
 
 
+def test_rename_aware_diff_keeps_line_numbers_and_ignores_the_configured_rename_limit(tmp_path):
+    root = tmp_path / "repo"
+    sources = {f"src/old_{index}.rs": "".join(f"fn function_{index}_{line}() {{}}\n" for line in range(8)) for index in range(3)}
+    make_repository(root, sources)
+    base = git(root, "rev-parse", "HEAD").strip()
+    for index, (old, source) in enumerate(sources.items()):
+        (root / old).unlink()
+        (root / f"src/new_{index}.rs").write_text("// moved\n" + source)
+    git(root, "add", "-A")
+    git(root, "config", "diff.renameLimit", "1")
+    git(root, "config", "diff.renames", "copies")
+
+    changes = GitRepository(str(root)).diff_against(base, detect_renames=True)
+    assert [(change.path, change.added, change.removed) for change in changes] == [
+        (f"src/new_{index}.rs", [(1, "// moved")], []) for index in range(3)
+    ]
+
+
 def _fake_cargo(folder, monkeypatch, script: str):
     """Put a `cargo` in front of the real one that runs the given shell script."""
     folder.mkdir()

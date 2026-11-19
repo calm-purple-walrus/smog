@@ -351,7 +351,8 @@ class Analyzer:
                 head_tools.record(unreviewed=head_unreviewed)
             same_basis_head = build_scorecard(head, policy, history, head_tools, rust_counts, doc_slop)
         changes = self._repository.diff_against(base_sha)
-        return Comparison(policy.ref, base, same_basis_head, changes, self._repository.commit_sizes_since(base_sha), policy.settings, base_tools is not None)
+        suppression_changes = self._repository.diff_against(base_sha, detect_renames=True)
+        return Comparison(policy.ref, base, same_basis_head, changes, self._repository.commit_sizes_since(base_sha), policy.settings, base_tools is not None, suppression_changes=suppression_changes)
 
     def _checks(self, head: Codebase, policy: Policy, comparison, slop, tool_results, policy_change=None) -> dict:
         checks = static_checks(head, FileGraph(head), policy)

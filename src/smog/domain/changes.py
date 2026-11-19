@@ -9,8 +9,9 @@ from smog.domain.settings import DEFAULT_SETTINGS
 
 
 class FileChange:
-    def __init__(self, path: str, added: list[tuple[int, str]], removed: list[tuple[int, str]], status: str = "M"):
+    def __init__(self, path: str, added: list[tuple[int, str]], removed: list[tuple[int, str]], status: str = "M", *, previous_path: str | None = None):
         self._path = path
+        self._previous_path = previous_path
         self._added = added
         self._removed = removed
         self._status = status
@@ -18,6 +19,11 @@ class FileChange:
     @property
     def path(self) -> str:
         return self._path
+
+    @property
+    def previous_path(self) -> str | None:
+        """The source path of a detected rename, otherwise None."""
+        return self._previous_path
 
     @property
     def added(self) -> list[tuple[int, str]]:
